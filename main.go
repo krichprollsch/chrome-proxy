@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 )
@@ -31,6 +34,18 @@ func handleConnection(cliConn net.Conn) {
 	defer cliConn.Close()
 	logger.Printf("handling client connection: %v", cliConn.RemoteAddr())
 
+	// check the Api-Key header
+	var cliBuf bytes.Buffer
+	r, err := http.ReadRequest(bufio.NewReader(io.TeeReader(cliConn, &cliBuf)))
+	if err != nil {
+		logger.Printf("impossible to read to the cli request: %v", err)
+		return
+	}
+	if "foo" != r.Header.Get("Api-Key") {
+		logger.Printf("invalid Api-Key receveived")
+		return
+	}
+
 	// dial a tcp conn to the google chrome
 	logger.Printf("starting chrome connection")
 	chromeConn, err := net.Dial("tcp", "127.0.0.1:9222")
@@ -45,7 +60,7 @@ func handleConnection(cliConn net.Conn) {
 
 	logger.Printf("start copy from cli to chrome")
 	wg.Add(1)
-	go copy(chromeConn, cliConn, wg)
+	go copy(chromeConn, &cliBuf, wg)
 
 	logger.Printf("start copy from chrome to cli")
 	wg.Add(1)
