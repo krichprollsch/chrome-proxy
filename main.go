@@ -103,7 +103,7 @@ func fw(reader io.Reader) (*http.Request, error) {
 	}
 
 	if flagKey != r.Header.Get("Api-Key") {
-		return r, fmt.Errorf("invalid Api-Key receveived", err)
+		return r, fmt.Errorf("invalid Api-Key receveived")
 	}
 
 	return r, nil
