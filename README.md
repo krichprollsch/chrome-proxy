@@ -7,7 +7,7 @@ Chrome-proxy is a tcp proxy to expose the
 
 The command line accepts some options:
 - `--help` shows the option available
-- `--bind` is the chome's address to request, default `127.0.0.1:9222`
+- `--bind` is the chrome's address to request, default `127.0.0.1:9222`
 - `--key` is a secret need to request the proxy via `Api-Key` http header, default `secret`
 - `--listen` is the proxy's server address, default `127.0.0.1:8080`
 
@@ -51,5 +51,5 @@ $ curl -H 'Api-Key: secret'  http://127.0.0.1:8080/json/version
 ## Unit test
 
 ```
-go test
+$ go test
 ```
