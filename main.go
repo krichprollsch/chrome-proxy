@@ -51,6 +51,7 @@ func handleConnection(cliConn net.Conn) {
 		resp.Write(cliConn)
 		return
 	}
+	r.Body.Close()
 
 	// dial a tcp conn to the google chrome
 	logger.Printf("starting chrome connection")
