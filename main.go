@@ -67,7 +67,7 @@ func handleConnection(cliConn net.Conn) {
 
 	logger.Printf("start copy from cli to chrome")
 	wg.Add(1)
-	go copy(chromeConn, &cliBuf, wg)
+	go copy(chromeConn, ioutil.NopCloser(&cliBuf), wg)
 
 	logger.Printf("start copy from chrome to cli")
 	wg.Add(1)
@@ -76,9 +76,12 @@ func handleConnection(cliConn net.Conn) {
 	wg.Wait()
 }
 
-func copy(dst io.Writer, src io.Reader, wg sync.WaitGroup) {
+// copy sends bytes read from src to dest
+func copy(dst net.Conn, src io.ReadCloser, wg sync.WaitGroup) {
 	defer wg.Done()
 	if _, err := io.Copy(dst, src); err != nil {
 		logger.Printf("impossible to copy from chrome to cli: %v", err)
+		dst.Close()
+		src.Close()
 	}
 }
