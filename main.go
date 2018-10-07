@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -49,13 +50,9 @@ func handleConnection(cliConn net.Conn) {
 
 	// check the Api-Key header
 	var cliBuf bytes.Buffer
-	r, err := http.ReadRequest(bufio.NewReader(io.TeeReader(cliConn, &cliBuf)))
+	r, err := fw(io.TeeReader(cliConn, &cliBuf))
 	if err != nil {
-		logger.Printf("impossible to read to the cli request: %v", err)
-		return
-	}
-	if flagKey != r.Header.Get("Api-Key") {
-		logger.Printf("invalid Api-Key receveived")
+		logger.Printf("authentication error: %v", err)
 		resp := http.Response{
 			StatusCode: 401,
 			Body:       ioutil.NopCloser(bytes.NewBufferString("Unauthorized\n")),
@@ -96,4 +93,18 @@ func copy(dst net.Conn, src io.ReadCloser, wg sync.WaitGroup) {
 		dst.Close()
 		src.Close()
 	}
+}
+
+// fw parses a http request from the reader and checks the Api-Key token
+func fw(reader io.Reader) (*http.Request, error) {
+	r, err := http.ReadRequest(bufio.NewReader(reader))
+	if err != nil {
+		return nil, fmt.Errorf("impossible to read to the cli request: %v", err)
+	}
+
+	if flagKey != r.Header.Get("Api-Key") {
+		return r, fmt.Errorf("invalid Api-Key receveived", err)
+	}
+
+	return r, nil
 }
