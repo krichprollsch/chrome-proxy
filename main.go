@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,12 +13,23 @@ import (
 	"sync"
 )
 
-var logger *log.Logger
+var (
+	flagListen string
+	flagBind   string
+	flagKey    string
+	logger     *log.Logger
+)
 
 func main() {
 	logger = log.New(os.Stderr, "chrome-proxy: ", log.Lshortfile)
 
-	ln, err := net.Listen("tcp", ":8080")
+	flag.StringVar(&flagListen, "listen", "127.0.0.1:8080", "proxy's address to listen")
+	flag.StringVar(&flagBind, "bind", "127.0.0.1:9222", "chrome's server address to bind")
+	flag.StringVar(&flagKey, "key", "secret", "http Api-Key header secret to check")
+	flag.Parse()
+
+	logger.Printf("start the proxy listening %s, binding %s", flagListen, flagBind)
+	ln, err := net.Listen("tcp", flagListen)
 	if err != nil {
 		logger.Fatalf("impossible to start the server: %v", err)
 	}
@@ -42,7 +54,7 @@ func handleConnection(cliConn net.Conn) {
 		logger.Printf("impossible to read to the cli request: %v", err)
 		return
 	}
-	if "foo" != r.Header.Get("Api-Key") {
+	if flagKey != r.Header.Get("Api-Key") {
 		logger.Printf("invalid Api-Key receveived")
 		resp := http.Response{
 			StatusCode: 401,
@@ -55,7 +67,7 @@ func handleConnection(cliConn net.Conn) {
 
 	// dial a tcp conn to the google chrome
 	logger.Printf("starting chrome connection")
-	chromeConn, err := net.Dial("tcp", "127.0.0.1:9222")
+	chromeConn, err := net.Dial("tcp", flagBind)
 	if err != nil {
 		logger.Printf("impossible to connect to the chrome: %v", err)
 		return
