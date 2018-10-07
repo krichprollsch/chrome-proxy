@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -43,6 +44,11 @@ func handleConnection(cliConn net.Conn) {
 	}
 	if "foo" != r.Header.Get("Api-Key") {
 		logger.Printf("invalid Api-Key receveived")
+		resp := http.Response{
+			StatusCode: 401,
+			Body:       ioutil.NopCloser(bytes.NewBufferString("Unauthorized\n")),
+		}
+		resp.Write(cliConn)
 		return
 	}
 
