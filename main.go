@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 var (
@@ -71,7 +72,6 @@ func handleConnection(cliConn net.Conn) {
 	}
 	defer chromeConn.Close()
 
-	// create a wait group to wait write and read goroutines
 	var wg sync.WaitGroup
 
 	logger.Printf("start copy from cli to chrome")
@@ -80,20 +80,37 @@ func handleConnection(cliConn net.Conn) {
 
 	logger.Printf("start copy from chrome to cli")
 	wg.Add(1)
-	go copy(cliConn, chromeConn, &wg)
+	go copyTimeout(cliConn, chromeConn, &wg)
 
-	logger.Printf("waiting during proxy")
 	wg.Wait()
-	logger.Printf("end of conn")
+	logger.Printf("end of handler")
+
 }
 
 // copy sends bytes read from src to dest
-func copy(dst net.Conn, src io.ReadCloser, wg *sync.WaitGroup) {
+func copy(dst io.Writer, src io.ReadCloser, wg *sync.WaitGroup) {
 	defer wg.Done()
 	if _, err := io.Copy(dst, src); err != nil {
-		logger.Printf("impossible to copy from chrome to cli: %v", err)
-		dst.Close()
-		src.Close()
+		logger.Printf("impossible to copy: %v", err)
+	}
+}
+
+func copyTimeout(dst io.Writer, src net.Conn, wg *sync.WaitGroup) {
+	defer wg.Done()
+	buffer := make([]byte, 512)
+	for {
+		// define a deadline
+		err := src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		n, err := src.Read(buffer)
+		if err != nil {
+			logger.Printf("error during read: %v", err)
+			break
+		}
+		n, err = dst.Write(buffer[:n])
+		if err != nil {
+			logger.Printf("error during write: %v", err)
+			break
+		}
 	}
 }
 
