@@ -82,7 +82,9 @@ func handleConnection(cliConn net.Conn) {
 	wg.Add(1)
 	go copy(cliConn, chromeConn, &wg)
 
+	logger.Printf("waiting during proxy")
 	wg.Wait()
+	logger.Printf("end of conn")
 }
 
 // copy sends bytes read from src to dest
