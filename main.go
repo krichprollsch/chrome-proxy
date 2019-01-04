@@ -16,7 +16,7 @@ var (
 )
 
 func main() {
-	logger = log.New(os.Stderr, "chrome-proxy: ", log.Lshortfile)
+	logger = log.New(os.Stderr, "", log.LstdFlags)
 
 	flag.StringVar(&flagListen, "listen", "127.0.0.1:8080", "proxy's address to listen")
 	flag.StringVar(&flagBind, "bind", "127.0.0.1:9222", "chrome's server address to bind")
