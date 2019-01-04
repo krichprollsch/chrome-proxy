@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -11,8 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"sync"
-	"time"
 )
 
 var (
@@ -22,8 +19,10 @@ var (
 	logger     *log.Logger
 )
 
+const HTTPHeaderSeparator string = "\r\n\r\n"
+
 func main() {
-	logger = log.New(os.Stderr, "chrome-proxy: ", log.Lshortfile)
+	logger = log.New(os.Stderr, "", log.LstdFlags)
 
 	flag.StringVar(&flagListen, "listen", "127.0.0.1:8080", "proxy's address to listen")
 	flag.StringVar(&flagBind, "bind", "127.0.0.1:9222", "chrome's server address to bind")
@@ -49,9 +48,8 @@ func handleConnection(cliConn net.Conn) {
 	defer cliConn.Close()
 	logger.Printf("handling client connection: %v", cliConn.RemoteAddr())
 
-	// check the Api-Key header
-	var cliBuf bytes.Buffer
-	r, err := fw(io.TeeReader(cliConn, &cliBuf))
+	// does the headers contains the valid secret?
+	headers, err := fw(cliConn)
 	if err != nil {
 		logger.Printf("authentication error: %v", err)
 		resp := http.Response{
@@ -61,7 +59,6 @@ func handleConnection(cliConn net.Conn) {
 		resp.Write(cliConn)
 		return
 	}
-	r.Body.Close()
 
 	// dial a tcp conn to the google chrome
 	logger.Printf("starting chrome connection")
@@ -72,58 +69,64 @@ func handleConnection(cliConn net.Conn) {
 	}
 	defer chromeConn.Close()
 
-	var wg sync.WaitGroup
-
-	logger.Printf("start copy from cli to chrome")
-	wg.Add(1)
-	go copy(chromeConn, ioutil.NopCloser(&cliBuf), &wg)
+	// first write the read header to chromeConn
+	chromeConn.Write(headers)
 
 	logger.Printf("start copy from chrome to cli")
-	wg.Add(1)
-	go copyTimeout(cliConn, chromeConn, &wg)
+	go copy(cliConn, chromeConn)
 
-	wg.Wait()
+	logger.Printf("start copy from cli to chrome")
+	copy(chromeConn, cliConn)
+
 	logger.Printf("end of handler")
-
 }
 
 // copy sends bytes read from src to dest
-func copy(dst io.Writer, src io.ReadCloser, wg *sync.WaitGroup) {
-	defer wg.Done()
+func copy(dst io.Writer, src io.Reader) {
 	if _, err := io.Copy(dst, src); err != nil {
 		logger.Printf("impossible to copy: %v", err)
 	}
+	logger.Printf("end of copy")
 }
 
-func copyTimeout(dst io.Writer, src net.Conn, wg *sync.WaitGroup) {
-	defer wg.Done()
-	buffer := make([]byte, 512)
-	for {
-		// define a deadline
-		err := src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-		n, err := src.Read(buffer)
-		if err != nil {
-			logger.Printf("error during read: %v", err)
-			break
-		}
-		n, err = dst.Write(buffer[:n])
-		if err != nil {
-			logger.Printf("error during write: %v", err)
-			break
-		}
-	}
-}
-
-// fw parses a http request from the reader and checks the Api-Key token
-func fw(reader io.Reader) (*http.Request, error) {
-	r, err := http.ReadRequest(bufio.NewReader(reader))
+func fw(r io.Reader) ([]byte, error) {
+	headers, err := readHttpHeaders(r)
 	if err != nil {
 		return nil, fmt.Errorf("impossible to read to the cli request: %v", err)
 	}
 
-	if flagKey != r.Header.Get("Api-Key") {
-		return r, fmt.Errorf("invalid Api-Key receveived")
+	if !bytes.Contains(headers, []byte(fmt.Sprintf("Api-Key: %s", flagKey))) {
+		return headers, fmt.Errorf("invalid Api-Key receveived")
 	}
 
-	return r, nil
+	return headers, nil
+}
+
+// read the reader until http header separator or error
+// returns the read bytes slice
+// the function doesn't return EOF error if found
+func readHttpHeaders(r io.Reader) ([]byte, error) {
+	read := make([]byte, 64)
+	buf := make([]byte, 0, 1024)
+	// we read until we found "\n\n" separator
+	for {
+		n, err := r.Read(read)
+		buf = append(buf, read[:n]...)
+		if err == io.EOF || n == 0 {
+			// end of file w/o finding end of headers
+			break
+		}
+		if err != nil {
+			return buf, err
+		}
+
+		// do we read the http header separator?
+		if bytes.Contains(buf, []byte(HTTPHeaderSeparator)) {
+			break
+		}
+
+		// TODO introduce a size limit
+	}
+
+	return buf, nil
 }
